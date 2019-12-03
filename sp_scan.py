@@ -88,37 +88,36 @@ def sec_headers(target, verbose=False):
                 print(s_header)
 
 
+def separate_text():
+    print()
+    print('--------------------------------------------------------------')
+    print()
+
+
 def scan(target_url, is_verbose):
+    print('Starting SharePoint scanner. This may take a while.')
     if target_url.endswith('/'):
-        target_url = url[:-1]
-        try:
-            print()
-            print('--------------------------------------------------------------')
-            print()
-            anon_access(target_url, is_verbose)
-        except Exception as e:
-            print("Error: could not scan " + target_url + ". Exception: " + str(e))
-        try:
-            print()
-            print('--------------------------------------------------------------')
-            print()
-            iis_tilde(target_url, is_verbose)
-        except Exception as e:
-            print("Error: could not scan " + target_url + ". Exception: " + str(e))
-        try:
-            print()
-            print('--------------------------------------------------------------')
-            print()
-            info_disclosure(target_url, is_verbose)
-        except Exception as e:
-            print("Error: could not scan " + target_url + ". Exception: " + str(e))
-        try:
-            print()
-            print('--------------------------------------------------------------')
-            print()
-            sec_headers(target_url, is_verbose)
-        except Exception as e:
-            print("Error: could not scan " + target_url + ". Exception: " + str(e))
+        target_url = target_url[:-1]
+    try:
+        separate_text()
+        anon_access(target_url, is_verbose)
+    except Exception as e:
+        print("Error: could not scan " + target_url + " for anonymous access. Exception: " + str(e))
+    try:
+        separate_text()
+        iis_tilde(target_url, is_verbose)
+    except Exception as e:
+        print("Error: could not scan " + target_url + " for IIS tilde enumeration. Exception: " + str(e))
+    try:
+        separate_text()
+        info_disclosure(target_url, is_verbose)
+    except Exception as e:
+        print("Error: could not scan " + target_url + " for verbose HTTP response headers. Exception: " + str(e))
+    try:
+        separate_text()
+        sec_headers(target_url, is_verbose)
+    except Exception as e:
+        print("Error: could not scan " + target_url + " for missing security headers. Exception: " + str(e))
 
 
 def str2bool(v):
