@@ -54,5 +54,3 @@ Contributions are welcome! If you find any issues or have suggestions for improv
 
 # Disclaimer
 This tool is intended for educational purposes only. Use it responsibly and only on systems you have permission to test.
-
-Feel free to copy and paste this into your README file directly! Let me know if there's any
