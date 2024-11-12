@@ -19,7 +19,7 @@ Scans SharePoint instances for the following vulnerabilities:
 
 1. Clone the repository:
     ```sh
-    git clone https://github.com/yourusername/sp_scanner.git
+    git clone https://github.com/abdullakarimov/sp_scanner.git
     ```
 2. Navigate to the directory:
     ```sh
