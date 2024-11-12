@@ -1,157 +1,111 @@
 import argparse
 import requests
+import logging
+from concurrent.futures import ThreadPoolExecutor
+import time
 
-s = requests.session()
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+s = requests.Session()
 with open("fuzz.txt") as f:
-    fuzz_lines = f.readlines()
-fuzz_lines = [x.strip() for x in fuzz_lines]
-
+    fuzz_lines = [x.strip() for x in f.readlines()]
 
 def anon_access(target, verbose=False):
     accessible_paths = []
     for fuzz_line in fuzz_lines:
-        r = s.get(target + fuzz_line, allow_redirects=True)
-
-        if r.status_code == 200 and "SharePointError" not in r.text:
-            accessible_paths.append(fuzz_line)
-    if len(accessible_paths) > 0:
-        print(target + " is vulnerable to Anonymously Accessible Resources.")
+        try:
+            r = s.get(target + fuzz_line, allow_redirects=True, timeout=10)
+            if r.status_code == 200 and "SharePointError" not in r.text:
+                accessible_paths.append(fuzz_line)
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error requesting {target + fuzz_line}: {str(e)}")
+    
+    if accessible_paths:
+        logging.info(f"{target} is vulnerable to Anonymously Accessible Resources.")
         if verbose:
-            print()
-            print("The following resources available for anonymous access:")
+            logging.info("The following resources are available for anonymous access:")
             for path in accessible_paths:
-                print(path)
-
+                logging.info(path)
 
 def iis_tilde(target, verbose=False):
     verbs = ["DEBUG", "TRACE", "OPTIONS", "GET", "HEAD"]
 
     for verb in verbs:
-        r1 = s.request(verb, target + "/a*~1*")
-        r2 = s.request(verb, target + "/aa*~1*")
-        if r1 != r2:
-            print(target + " is vulnerable to IIS Tilde Enumeration. Used HTTP method: " + verb)
-            if verbose:
-                print()
-                print("Proof of concept: ")
-                print("curl -IX" + verb + " " + target + "/a*~1*")
-                print("curl -IX" + verb + " " + target + "/aa*~1*")
-            break
-
+        try:
+            r1 = s.request(verb, target + "/a*~1*", timeout=10)
+            r2 = s.request(verb, target + "/aa*~1*", timeout=10)
+            if r1.status_code != r2.status_code or r1.text != r2.text:
+                logging.info(f"{target} is vulnerable to IIS Tilde Enumeration. Used HTTP method: {verb}")
+                if verbose:
+                    logging.info("Proof of concept:")
+                    logging.info(f"curl -IX {verb} {target}/a*~1*")
+                    logging.info(f"curl -IX {verb} {target}/aa*~1*")
+                break
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error during IIS Tilde Enumeration for {target}: {str(e)}")
 
 def info_disclosure(target, verbose=False):
-    info_headers = ["Server",
-                    "X-SharePointHealthScore",
-                    "SPRequestGuid",
-                    "request-id",
-                    "X-Forms_Based_Auth_Required",
-                    "X-Forms_Based_Auth_Return_Url",
-                    "X-MSDAVEXT_Error",
-                    "X-Powered-By",
-                    "MicrosoftSharePointTeamServices",
+    info_headers = ["Server", "X-SharePointHealthScore", "SPRequestGuid", "request-id", 
+                    "X-Forms_Based_Auth_Required", "X-Forms_Based_Auth_Return_Url", 
+                    "X-MSDAVEXT_Error", "X-Powered-By", "MicrosoftSharePointTeamServices", 
                     "X-MS-InvokeApp"]
-    resp_headers = []
-    r = s.get(target + "/")
-    for header in r.headers:
-        if header in info_headers:
-            resp_headers.append(header)
-    if len(resp_headers) > 0:
-        print(target + " is vulnerable to Information Disclosure in HTTP Response Headers.")
-        if verbose:
-            print()
-            print("List of the headers:")
-            for resp_header in resp_headers:
-                print(resp_header)
-
+    try:
+        r = s.get(target, timeout=10)
+        resp_headers = [header for header in r.headers if header in info_headers]
+        if resp_headers:
+            logging.info(f"{target} is vulnerable to Information Disclosure in HTTP Response Headers.")
+            if verbose:
+                logging.info("List of the headers:")
+                for resp_header in resp_headers:
+                    logging.info(resp_header)
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error during info disclosure scan for {target}: {str(e)}")
 
 def sec_headers(target, verbose=False):
-    s_headers = ["strict-transport-security ",
-                 "referrer-policy",
-                 "x-xss-protection"
-                 ]
-    resp_headers = []
-    r = s.get(target + "/")
-    for header in r.headers:
-        resp_headers.append(header.lower())
+    s_headers = ["strict-transport-security", "referrer-policy", "x-xss-protection"]
+    try:
+        r = s.get(target, timeout=10)
+        resp_headers = [header.lower() for header in r.headers]
 
-    for s_header in s_headers:
-        if s_header not in resp_headers:
-            print(target + " is vulnerable to Missing Security Headers.")
-            break
-
-    if verbose:
-        print()
-        print("Missing headers:")
-        for s_header in s_headers:
-            if s_header not in resp_headers:
-                print(s_header)
-
-
-def separate_text():
-    print()
-    print('--------------------------------------------------------------')
-    print()
-
+        missing_headers = [s_header for s_header in s_headers if s_header not in resp_headers]
+        if missing_headers:
+            logging.info(f"{target} is vulnerable to Missing Security Headers.")
+            if verbose:
+                logging.info("Missing headers:")
+                for s_header in missing_headers:
+                    logging.info(s_header)
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error during security headers scan for {target}: {str(e)}")
 
 def scan(target_url, is_verbose):
-    print('Starting SharePoint scanner. This may take a while.')
+    logging.info('Starting SharePoint scanner. This may take a while.')
     if target_url.endswith('/'):
         target_url = target_url[:-1]
-    try:
-        separate_text()
-        anon_access(target_url, is_verbose)
-    except Exception as e:
-        print("Error: could not scan " + target_url + " for anonymous access. Exception: " + str(e))
-    try:
-        separate_text()
-        iis_tilde(target_url, is_verbose)
-    except Exception as e:
-        print("Error: could not scan " + target_url + " for IIS tilde enumeration. Exception: " + str(e))
-    try:
-        separate_text()
-        info_disclosure(target_url, is_verbose)
-    except Exception as e:
-        print("Error: could not scan " + target_url + " for verbose HTTP response headers. Exception: " + str(e))
-    try:
-        separate_text()
-        sec_headers(target_url, is_verbose)
-    except Exception as e:
-        print("Error: could not scan " + target_url + " for missing security headers. Exception: " + str(e))
+    
+    anon_access(target_url, is_verbose)
+    iis_tilde(target_url, is_verbose)
+    info_disclosure(target_url, is_verbose)
+    sec_headers(target_url, is_verbose)
 
+def main():
+    parser = argparse.ArgumentParser(description='Scan Sharepoint instances for common vulnerabilities')
+    parser.add_argument('-u', '--url', metavar='u', help='target URL')
+    parser.add_argument('-f', '--file', metavar='f', help='path to file with URLs')
+    parser.add_argument('-v', '--verbose', action='store_true', help='display verbose information')
+    args = parser.parse_args()
 
-def str2bool(v):
-    if isinstance(v, bool):
-        return v
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
+    if args.url:
+        scan(args.url, args.verbose)
+    elif args.file:
+        with open(args.file) as f:
+            urls = [x.strip() for x in f.readlines()]
+        
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            for url in urls:
+                if url.startswith("http"):
+                    executor.submit(scan, url, args.verbose)
     else:
-        raise argparse.ArgumentTypeError('Boolean value expected.')
+        parser.print_help()
 
-
-parser = argparse.ArgumentParser(description='Scan Sharepoint instances for common vulnerabilities')
-parser.add_argument('-u', '--url', metavar='u', help='target URL')
-parser.add_argument('-f', '--file', metavar='f', help='path to file with URLs')
-parser.add_argument('-v', '--verbose', metavar='v', help='display verbose information', type=str2bool, default=False)
-args = parser.parse_args()
-
-url = str(args.url)
-filename = str(args.file)
-verbose = args.verbose
-
-if url:
-    if url.endswith('/'):
-        url = url[:-1]
-
-if url != "None":
-    scan(url, verbose)
-else:
-    if filename != "None":
-        with open(filename) as f:
-            urls = f.readlines()
-        urls = [x.strip() for x in urls]
-        for url in urls:
-            if url.startswith("http"):
-                scan(url, verbose)
+if __name__ == "__main__":
+    main()
