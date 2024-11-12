@@ -6,7 +6,13 @@ import time
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Creating a session and setting a custom User-Agent
 s = requests.Session()
+s.headers.update({
+    'User-Agent': 'sp_scanner/1.0 (https://github.com/yourusername/sp_scanner)'
+})
+
+# Reading fuzz lines from file
 with open("fuzz.txt") as f:
     fuzz_lines = [x.strip() for x in f.readlines()]
 
@@ -17,6 +23,8 @@ def anon_access(target, verbose=False):
             r = s.get(target + fuzz_line, allow_redirects=True, timeout=10)
             if r.status_code == 200 and "SharePointError" not in r.text:
                 accessible_paths.append(fuzz_line)
+            # Rate limiting: add delay to avoid overwhelming the server
+            time.sleep(0.5)
         except requests.exceptions.RequestException as e:
             logging.error(f"Error requesting {target + fuzz_line}: {str(e)}")
     
@@ -41,6 +49,8 @@ def iis_tilde(target, verbose=False):
                     logging.info(f"curl -IX {verb} {target}/a*~1*")
                     logging.info(f"curl -IX {verb} {target}/aa*~1*")
                 break
+            # Rate limiting: add delay to avoid overwhelming the server
+            time.sleep(0.5)
         except requests.exceptions.RequestException as e:
             logging.error(f"Error during IIS Tilde Enumeration for {target}: {str(e)}")
 
@@ -57,12 +67,18 @@ def info_disclosure(target, verbose=False):
             if verbose:
                 logging.info("List of the headers:")
                 for resp_header in resp_headers:
-                    logging.info(resp_header)
+                    logging.info(f"{resp_header}: {r.headers[resp_header]}")
+                    if resp_header in ["Server", "X-Powered-By"]:
+                        logging.info("Explanation: These headers can provide information about the underlying server technology, making it easier for attackers to target specific vulnerabilities.")
+                    elif resp_header in ["X-SharePointHealthScore", "MicrosoftSharePointTeamServices"]:
+                        logging.info("Explanation: These headers disclose SharePoint-specific information, which can help attackers identify the presence of SharePoint and potentially exploit known vulnerabilities.")
+            # Rate limiting: add delay to avoid overwhelming the server
+            time.sleep(0.5)
     except requests.exceptions.RequestException as e:
         logging.error(f"Error during info disclosure scan for {target}: {str(e)}")
 
 def sec_headers(target, verbose=False):
-    s_headers = ["strict-transport-security", "referrer-policy", "x-xss-protection"]
+    s_headers = ["strict-transport-security", "referrer-policy", "x-xss-protection", "content-security-policy"]
     try:
         r = s.get(target, timeout=10)
         resp_headers = [header.lower() for header in r.headers]
@@ -74,6 +90,16 @@ def sec_headers(target, verbose=False):
                 logging.info("Missing headers:")
                 for s_header in missing_headers:
                     logging.info(s_header)
+                    if s_header == "strict-transport-security":
+                        logging.info("Explanation: The Strict-Transport-Security (HSTS) header ensures that browsers only communicate with the server over HTTPS, preventing man-in-the-middle attacks.")
+                    elif s_header == "referrer-policy":
+                        logging.info("Explanation: The Referrer-Policy header controls how much referrer information is sent, which helps to minimize information leakage.")
+                    elif s_header == "x-xss-protection":
+                        logging.info("Explanation: The X-XSS-Protection header helps prevent cross-site scripting attacks by instructing the browser to block or sanitize suspicious content.")
+                    elif s_header == "content-security-policy":
+                        logging.info("Explanation: The Content-Security-Policy (CSP) header helps to prevent a range of attacks, including XSS, by controlling which resources can be loaded on the page.")
+            # Rate limiting: add delay to avoid overwhelming the server
+            time.sleep(0.5)
     except requests.exceptions.RequestException as e:
         logging.error(f"Error during security headers scan for {target}: {str(e)}")
 
