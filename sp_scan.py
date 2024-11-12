@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Creating a session and setting a custom User-Agent
 s = requests.Session()
 s.headers.update({
-    'User-Agent': 'sp_scanner/1.0 (https://github.com/yourusername/sp_scanner)'
+    'User-Agent': 'sp_scanner/1.0 (https://github.com/abdullakarimov/sp_scanner)'
 })
 
 # Reading fuzz lines from file
